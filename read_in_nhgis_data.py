@@ -11,6 +11,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pylab as plt
+from matplotlib import cm
 import marble as mb
 
 
@@ -31,6 +32,13 @@ filename_traveltime = 'traveltime_blockgroup_ny_2011_2015/nhgis0006_ds215_20155_
 inputfile_income = foldername+filename_income
 inputfile_race = foldername+filename_race
 inputfile_traveltime = foldername+filename_traveltime
+
+# Maarten, verander dit nog naar een andere, meer up to date shapefile. Er zijn er in de NHGIS database/folder
+foldername_geo='/Users/maarten/Desktop/nyu-data/NHGIS/shapefile_ny_blockgroup_2015/'
+inputname_geo= 'shapefile_blockgroup_NY_2015.csv'
+inputfile_geo=foldername_geo + inputname_geo
+# The NY_36061_NY_blocks_lat_lon was made based on the 2010_NY_36061_NY_blocks_boundary_files shapefile, then in qgis. 
+
 
 #####################
 #1.2 Read in OD files
@@ -259,6 +267,25 @@ for index,row in df_traveltime_ny.iterrows():
 #print df_traveltime_ny.head(10)
 
 
+#####################
+#1.3 Read in geo-data
+#####################
+
+print 'Reading in geo data'
+
+df_geo = pd.read_csv(inputfile_geo,
+    sep=',', 
+    lineterminator='\n', 
+    header=0,
+    names = ['STATEFP','COUNTYFP','TRACTCE','BLKGRPCE','GEOID','NAMELSAD','MTFCC','FUNCSTAT','ALAND','AWATER','INTPTLAT','INTPTLON','GISJOIN','Shape_Leng','Shape_Area']
+    )
+
+print df_geo.head(3)
+df_geo_small=df_geo[['GISJOIN','INTPTLAT','INTPTLON']]
+print df_geo_small.head(3)
+print 'Ended reading in geo data'
+
+
 ############################
 #2. Read in data in marble
 ############################
@@ -313,100 +340,292 @@ print traveltime_ny_dict.items()[0]
 #3.  Calculate representation values for data. 
 ############################
 
-r_income= mb.representation(income_ny_dict)
-r_race= mb.representation(race_ny_dict)
-r_traveltime= mb.representation(traveltime_ny_dict)
+r_dict_income= mb.representation(income_ny_dict)
+r_dict_race= mb.representation(race_ny_dict)
+r_dict_traveltime= mb.representation(traveltime_ny_dict)
 
 # mb.representation its outcome is dict of dict with 
 # {areal_id: {class_id: (representation_values, variance of the null model)}}
 
+#####################
+#3.1 Convert r_dicts to pandas dataframe 
+#####################
+
+def convert_r_dict_to_df(r_dict):
+    r_df = pd.DataFrame([(area_id, class_id, tuple_of_r_outcomes) 
+                        for area_id, dict_of_classes_and_rvalues in r_dict.items()
+                        for class_id, tuple_of_r_outcomes in dict_of_classes_and_rvalues.items()
+                        ])
+    r_df.columns = ['area_id','class_id','tuple']
+    r_df[['r_value', 'r_variance_null_model']] = r_df['tuple'].apply(pd.Series)
+    r_df = r_df.drop('tuple', 1)
+
+    return r_df
+
+r_df_income=convert_r_dict_to_df(r_dict_income)
+r_df_race=convert_r_dict_to_df(r_dict_race)
+r_df_traveltime=convert_r_dict_to_df(r_dict_traveltime)
+
 
 #####################
-#3.1 Add informaion on statistically significant over- or under representation
-
+#3.2 Add information on statistically significant over- or under representation
+#####################
 # Remember that the expected values for r given the null model are 1, 
 # implicating that 1 +/- 2.57*stdv of null models is the confidence interval
 # for 99%.  The stdv of the null models equals the square root of its variance 
+
+avg_exp_value_for_null_model = 1 #for gaussian distribution of nullmodel
+confidence_interval_factor = 2.57 #for 99% interval of gaussidan distribution
+
+
+###############
+#3.2.1 Calculate z-score for value
+###############
+r_df_income['z_score']=(r_df_income['r_value'] - avg_exp_value_for_null_model) / pow(r_df_income['r_variance_null_model'],0.5)
+
+
+###############
+#3.2.2 Evaluate z_score at 99% interval
+###############E
+
+def r_value_to_signif_cat(row,confidence_interval_factor,avg_exp_value_for_null_model):
+    value=row['r_value']
+    stdv=pow(row['r_variance_null_model'],0.5) #stv, or variance, is specific for each class class combination
+    boundary=stdv*confidence_interval_factor
+    if value-boundary>=avg_exp_value_for_null_model:
+        out='or' #significantly over-represented
+    elif value+boundary<=avg_exp_value_for_null_model:
+        out='ur' #signiifcantly under-represented
+    else:
+        out='ns' #non-significant
+    return out
+
+#axis=1 to pass row after row to the function, args requires a tuple if you have only one element, you need to add the comma at the end
+r_df_income['signif_cat_99'] = r_df_income.apply(r_value_to_signif_cat,args=(confidence_interval_factor,avg_exp_value_for_null_model),axis=1)
+
+###############
+#3.2.3 Show some plots of distribution of z-scores
+###############E
+
+r_df_income['signif_cat_99'].value_counts().plot(kind='bar')
+plt.show()
+
+r_df_income.hist(column='z_score', bins=50)
+plt.show()
+
+
+
 #####################
+#3.3 Investigate spatial pattern of representation
+
+# Moet nog aangepast worden naar nieuwe namen.
+#####################
+'''
+
+#Join GEO-data information with representativity information.
+
+# Unique area ids in r_income_signif_pandas_geo is 15463
+# Unique GISJOIN codes in df_geo_small is 15246
+# So we are losing data for 217 blockgroup resulting in 
+# 217 * number of classes of NaN values for lat and lon 
+# r_income_signif_pandas_geo.isnull().sum()
+
+r_income_signif_pandas_geo=pd.merge(r_income_signif_pandas,df_geo_small, how='left', left_on='area_id', right_on ='GISJOIN').rename(columns={'INTPTLAT': 'lat','INTPTLON': 'lon'})
+r_race_signif_pandas_geo=pd.merge(r_race_signif_pandas,df_geo_small, how='left', left_on='area_id', right_on ='GISJOIN').rename(columns={'INTPTLAT': 'lat','INTPTLON': 'lon'})
+r_traveltime_signif_pandas_geo=pd.merge(r_traveltime_signif_pandas,df_geo_small, how='left', left_on='area_id', right_on ='GISJOIN').rename(columns={'INTPTLAT': 'lat','INTPTLON': 'lon'})
+'''
+
+#############
+#3.3.1 Scatter for z-scores (continous)
+# Moet nog aangepast worden naar nieuwe namen.
+#############
+
+'''
+# Give easier name
+df=r_traveltime_signif_pandas_geo
+#df=r_race_signif_pandas_geo
+#df=r_traveltime_signif_pandas_geo
+
+# Get list of unique classes
+class_id_list= df.class_id.unique()
+
+for class_id_name in class_id_list:
+
+    df_one_class=df.loc[df['class_id'] == class_id_name]
+
+    fig, ax1=plt.subplots(figsize=(14,12))
+    sc=ax1.scatter(df_one_class['lon'],df_one_class['lat'], c=df_one_class['z_score'],cmap=cm.jet,vmin=-10,vmax=10,s=2,alpha=0.5)
+    title_name='z_scores of representativity values for class %s' %class_id_name
+    ax1.set_title(title_name,fontsize=11) 
+
+    ax1.set_xlim(-74.3,-73.5)
+    ax1.set_ylim(40.49,41.05)
+    plt.colorbar(sc)
+    #plt.show()
+    fig_name = 'NY_z_score_%s.png' %class_id_name
+    plt.savefig(fig_name)
+    plt.clf()
+
+'''
+#############
+#3.3.2 Scatter for significant test (categorical)
+# Moet nog aangepast worden naar nieuwe namen.
+#############
+'''
+# Give easier name
+df=r_traveltime_signif_pandas_geo
+#df=r_race_signif_pandas_geo
+#df=r_traveltime_signif_pandas_geo
 
 
-# Remark from Maarten, it will be more elegant to compare the z-scores to a value rather than calculating the boundaries of the confidence interval, but ok.
+# Get list of unique classes
+class_id_list= df.class_id.unique()
 
-def r_add_signif(r_input, expected_value=1, confidence_interval_factor=2.57):
-    '''
-    expected_value = 1 #for gaussian distribution of nullmodel
-    confidence_interval_factor = 2.57 #for 99% interval of gaussidan distribution
+for class_id_name in class_id_list:
 
-    ns= non-significant
-    ur= signiifcantly under-represented
-    or= significantly over-represented
-    '''
+    df_one_class=df.loc[df['class_id'] == class_id_name]
 
-    # make a copy so you don't mess with the original dict
-    import copy
-    r_outcome = copy.deepcopy(r_input) 
+    colors = {'or':'red', 'ur':'blue', 'ns':'grey'}
 
-    for area_id, dict_of_classes_and_rvalues in r_outcome.items():
-        for class_id, r_tuple in dict_of_classes_and_rvalues.items():
+    fig, ax1=plt.subplots(figsize=(14,12))
+    sc=ax1.scatter(df_one_class['lon'],df_one_class['lat'], c=df_one_class['signif_cat_99'].apply(lambda x: colors[x]),s=2,alpha=0.5)
+    title_name='Significance of representativity values for class %s' %class_id_name
+    ax1.set_title(title_name,fontsize=11) 
 
-            #calculate z-score with relation to null model which has mean=expected value
-            z_score = (r_tuple[0]-expected_value)/pow(r_tuple[1],0.5)
+    ax1.set_xlim(-74.3,-73.5)
+    ax1.set_ylim(40.49,41.05)
+    #plt.show()
+    fig_name = 'NY_sign_cat_%s.png' %class_id_name
+    plt.savefig(fig_name)
+    plt.clf()
 
-            #setup boundaries of confidence interval
-            upper_bound=expected_value + (confidence_interval_factor*pow(r_tuple[1],0.5))
-            lower_bound=expected_value - (confidence_interval_factor*pow(r_tuple[1],0.5))
-
-            #print 'observed value is ' + str(r_tuple[0]) + ' while boundaries of confidence interval are ' + str((lower_bound,upper_bound)) + ' hence we find this value to be ' 
-            if r_tuple[0] < lower_bound:
-                #print 'significantly under-represented'
-                r_outcome[area_id][class_id]=(r_tuple[0],r_tuple[1],z_score,'ur')
-                
-
-            elif r_tuple[0] > upper_bound:
-                #print 'significantly over-represented'
-                r_outcome[area_id][class_id]=(r_tuple[0],r_tuple[1],z_score,'or')
-
-            else: 
-                #print 'non-significant'
-                r_outcome[area_id][class_id]=(r_tuple[0],r_tuple[1],z_score,'ns')
-
-    return r_outcome
-
-r_income_signif= r_add_signif(r_income)
-r_race_signif= r_add_signif(r_race)
-r_traveltime_signif= r_add_signif(r_traveltime)
+'''
 
 
-############
-#3.1.1 Investigate the amount of underrepresented and overrepresented per class_id
-############
+############################
+#4.  Calculate exposure values for data. 
 
-# Recreate pandas dataframe from r_dicts.
-r_income_signif_pandas = pd.DataFrame([(area_id, class_id, tuple_of_r_outcomes) 
-                                        for area_id, dict_of_classes_and_rvalues in r_income_signif.items()
-                                        for class_id, tuple_of_r_outcomes in dict_of_classes_and_rvalues.items()
+# mb.exposure its outcome is dict of dict with 
+# {class_id: {class_id: (exposure value, variance of the null model)}}
+############################
+
+
+'''
+exp_income= mb.exposure(income_ny_dict)
+exp_race= mb.exposure(race_ny_dict)
+exp_traveltime= mb.exposure(traveltime_ny_dict)
+'''
+
+############################
+#4.1 Add information on significancy 
+
+#####################   OPGEPAST !!!!!!  ##################
+# Grote vraag is of de exposure values ook de gaussian distributie vormen en of dus hiervoor ook geldt dat
+#2,57 * stdv is het 99% interval. Het zou wel eens kunnen zijn dat dit niet waar is.
+############################
+
+###############
+#4.1.1 Set up significancy parameters 
+###############
+# Set up significacy parameters. 
+avg_exp_value_for_null_model = 1 # average exposure value for nullmodel = 1 (see paper Louf et Barthelemy)
+confidence_interval_factor = 2.57 #for 99% interval of gaussidan distribution
+
+###############
+#4.1.2 Change dataformat
+###############
+# Put in pandas format to make it more workable. 
+city = {"A":{0: 10, 1:0, 2:23},"B":{0: 0, 1:10, 2:8}}
+test = mb.exposure(city)
+
+
+def convert_exp_dict_to_df(exp_dict):
+    exp_df=pd.DataFrame([(class_id1, class_id2, tuple_of_exp_outcomes) 
+                                        for class_id1, dict_of_classes_and_exp_values in test.items()
+                                        for class_id2, tuple_of_exp_outcomes in dict_of_classes_and_exp_values.items()
                                         ])
-r_income_signif_pandas.columns = ['area_id','class_id','tuple']
-r_income_signif_pandas[['r_value', 'r_variance','z_score','signif_cat_99']] = r_income_signif_pandas['tuple'].apply(pd.Series)
+    exp_df.columns = ['class_id1','class_id2','tuple']
+    exp_df[['exp_value', 'exp_variance_null_model']] = exp_df['tuple'].apply(pd.Series)           
+    exp_df = exp_df.drop('tuple', 1)
+    return exp_df
 
-r_race_signif_pandas = pd.DataFrame([(area_id, class_id, tuple_of_r_outcomes) 
-                                        for area_id, dict_of_classes_and_rvalues in r_race_signif.items()
-                                        for class_id, tuple_of_r_outcomes in dict_of_classes_and_rvalues.items()
-                                        ])
-r_race_signif_pandas.columns = ['area_id','class_id','tuple']
-r_race_signif_pandas[['r_value', 'r_variance','z_score','signif_cat_99']] = r_race_signif_pandas['tuple'].apply(pd.Series)
+test7=convert_exp_dict_to_df(test)
 
-r_traveltime_signif_pandas = pd.DataFrame([(area_id, class_id, tuple_of_r_outcomes) 
-                                        for area_id, dict_of_classes_and_rvalues in r_traveltime_signif.items()
-                                        for class_id, tuple_of_r_outcomes in dict_of_classes_and_rvalues.items()
-                                        ])
-r_traveltime_signif_pandas.columns = ['area_id','class_id','tuple']
-r_traveltime_signif_pandas[['r_value', 'r_variance','z_score','signif_cat_99']] = r_traveltime_signif_pandas['tuple'].apply(pd.Series)
+###############
+#4.1.3 Calculate z-score 
+###############
+test7['z_score']=(test7['exp_value'] - avg_exp_value_for_null_model) / pow(test7['exp_variance_null_model'],0.5)
 
 
-print r_income_signif_pandas.head(3)
-print r_race_signif_pandas.head(3)
-print r_traveltime_signif_pandas.head(3)
+###############
+#4.1.3 Evaluate z_score at 99% interval
+###############E
+
+def exp_value_to_signif_cat(row,confidence_interval_factor,avg_exp_value_for_null_model):
+    value=row['exp_value']
+    stdv=pow(row['exp_variance_null_model'],0.5) #stv, or variance, is specific for each class class combination
+    boundary=stdv*confidence_interval_factor
+    if value-boundary>=avg_exp_value_for_null_model:
+        out='or'
+    elif value+boundary<=avg_exp_value_for_null_model:
+        out='ur'
+    else:
+        out='ns'
+    return out
+
+#axis=1 to pass row after row to the function, args requires a tuple if you have only one element, you need to add the comma at the end
+test7['signif_cat_99'] = test7.apply(exp_value_to_signif_cat,args=(confidence_interval_factor,avg_exp_value_for_null_model),axis=1)
+
+
+
+
+
+############################
+#4.2 Create Hinton diagrams for exposure values. 
+############################
+test8 = test7.pivot(index='class_id1', columns='class_id2', values='exp_value')
+
+
+def hinton(matrix, max_weight=None, ax=None):
+    """Draw Hinton diagram for visualizing a weight matrix."""
+    ax = ax if ax is not None else plt.gca()
+
+    if not max_weight:
+        max_weight = 2**np.ceil(np.log(np.abs(matrix).max())/np.log(2))
+
+    ax.patch.set_facecolor('lightgray')
+    ax.set_aspect('equal', 'box')
+    ax.xaxis.set_major_locator(plt.NullLocator())
+    ax.yaxis.set_major_locator(plt.NullLocator())
+
+    for (x, y), w in np.ndenumerate(matrix):
+        color = 'red' if w > 1 else 'blue'
+        size = np.sqrt(np.abs(w))
+        rect = plt.Rectangle([x - size / 2, y - size / 2], size, size,
+                             facecolor=color, edgecolor=color)
+        ax.add_patch(rect)
+
+    nticks = matrix.shape[0]
+    ax.xaxis.tick_top()
+    ax.set_xticks(range(nticks))
+    ax.set_xticklabels(list(matrix.columns), rotation=90)
+    ax.set_yticks(range(nticks))
+    ax.set_yticklabels(matrix.columns)
+    ax.grid(False)
+
+    ax.autoscale_view()
+    ax.invert_yaxis()
+
+hinton(test8)
+plt.show()
+
+
+
+
+
+###############################################################################################
+###################################      Developing        ####################################
+###############################################################################################
 
 
 
@@ -487,5 +706,17 @@ print pretty(income_ny_dict)
 
 
 
+
+# Prepare small helper function to get GEO-ID from geo_data_small in right shape to join
+
+def add_G (row):
+    row_out = 'G'  + str(row)
+    return row_out
+
+
+df_geo_small['GEOID10_with_G'] = df_geo_small['GEOID10'].apply(add_G)
+
+
 '''
+
 
