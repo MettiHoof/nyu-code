@@ -1,3 +1,5 @@
+On maarten's mac, the files in this folder are stored in the 'residential segregation' file
+
 NHGIS data was downloaded from https://data2.nhgis.org/main
 
 Referencing should be done like this
