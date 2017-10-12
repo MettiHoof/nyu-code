@@ -1,0 +1,61 @@
+##############################################################################################
+
+Read me for the LODES data. 
+
+
+Data found at https://lehd.ces.census.gov/data/lodes/LODES7/
+Downloaded on tuesday the 5th of september 2017
+Metadata of the data is available in the LODES_Metadata.pdf file, also downloaded fro, the site
+and previously called LODESTechDoc7.2.pdf
+
+?ost impoortant bits of metadata are:
+OD
+Filename of the OD datasets are described by the following templates [ST]_od_[PART]_[TYPE]_[YEAR].csv.gz where
+[ST] = lowercase, 2-letter postal code for a chosen state
+[PART] = Part of the state file, can have a value of either “main” or “aux”. Complimentary parts of
+the state file, the main part includes jobs with both workplace and residence in the state and the aux part includes jobs with the workplace in the state and the residence outside of the state.
+[TYPE] = Job Type, can have a value of “JT00” for All Jobs, “JT01” for Primary Jobs, “JT02” for All Private Jobs, “JT03” for Private Primary Jobs, “JT04” for All Federal Jobs, or “JT05” for Federal Primary Jobs.
+[YEAR] = Year of job data. Can have the value of 2002-2014 for most states.
+As an example the main OD file of Primary Jobs in 2007 for California would be the file: ca_od_main_JT01_2007.csv.gz
+
+The structure of the OD files is as follows:
+￼
+1 	w_geocode	Char15	Workplace Census Block Code
+2 	h_geocode 	Char15	Residence Census Block Code
+3 	S000		number 	Total number of jobs
+4 	SA01 		Num 	Number of jobs of workers age 29 or younger12
+5 	SA02 		Num 	Number of jobs for workers age 30 to 5412
+6 	SA03 		Num 	Number of jobs for workers age 55 or older12
+7 	SE01 		Num 	Number of jobs with earnings $1250/month or less
+8 	SE02 		Num 	Number of jobs with earnings $1251/month to $3333/month
+9 	SE03 		Num 	Number of jobs with earnings greater than $3333/month
+10 	SI01 		Number 	Number of jobs in Goods Producing industry sectors
+11 	SI02 		Num 	Number of jobs in Trade, Transportation, and Utilities industry sectors
+12 	SI03 		Num 	Number of jobs in All Other Services industry sectors
+13 	createdate 	Char 	Date on which data was created, formatted as YYYYMMDD
+
+RAC files
+
+Filenames of the RAC datasets are described by the following template: [ST]_rac_[SEG]_[TYPE]_[YEAR]_1.csv.gz where
+[ST] = lowercase, 2-letter postal code for a chosen state
+[SEG] = Segment of the workforce, can have the values of “S000”, “SA01”, “SA02”, “SA03”,
+“SE01”, “SE02”, “SE03”, “SI01”, “SI02”, or “SI03”. These correspond to the same
+segments of the workforce as are listed in the OD file structure above.
+[TYPE] = Job Type, can have a value of “JT00” for All Jobs, “JT01” for Primary Jobs, “JT02” for All Private Jobs, “JT03” for Private Primary Jobs, “JT04” for All Federal Jobs, or “JT05”
+for Federal Primary Jobs.
+[YEAR] = Year of job data. Can have the value of 2002-2014 for most states.
+As an example the RAC file of All Jobs for workers age 29 or younger in 2004 for New Jersey would be the file: nj_rac_SA01_JT00_2004.csv.gz
+
+WAC files
+
+Filenames of the WAC datasets are described by the following template: [ST]_wac_[SEG]_[TYPE]_[YEAR].csv.gz where
+[ST] = lowercase, 2-letter postal code for a chosen state
+[SEG] = Segment of the workforce, can have the values of “S000”, “SA01”, “SA02”, “SA03”,
+“SE01”, “SE02”, “SE03”, “SI01”, “SI02”, or “SI03”. These correspond to the same
+segments of the workforce as are listed in the OD file structure above.
+[TYPE] = Job Type, can have a value of “JT00” for All Jobs, “JT01” for Primary Jobs, “JT02” for All Private Jobs, “JT03” for Private Primary Jobs, “JT04” for All Federal Jobs, or “JT05”
+for Federal Primary Jobs.
+[YEAR] = Year of job data. Can have the value of 2002-2014 for most states.
+As an example the WAC file of Private Primary Jobs for workers earning more that $3333/mo in 2008 for Iowa would be the file: ia_wac_SE03_JT03_2008.csv.gz
+
+###############################################################################################
